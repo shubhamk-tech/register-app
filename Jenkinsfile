@@ -1,27 +1,30 @@
 pipeline {
-    agent { label 'Jenkins-Agent'}
+    agent any
     tools {
         jdk 'Java17'
         maven 'Maven3'
     }
     
     environment {
-        APP_NAME = "register-app-pipline"
+        SCANNER_HOME=tool 'sonar-scanner'
+        APP_NAME = "register-app-pipeline"
         RELEASE = "1.0.0"
         DOCKER_USER = "shubhz1452"
-        DOCKER_PASS = 'dockerhub'
+        DOCKER_PASS = "dockerhub"
         IMAGE_NAME = "${DOCKER_USER}" + "/" + "${APP_NAME}"
         IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
         JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
+    
     stages {
+        
         stage ("Cleanup workspaces") {
             steps {
                 cleanWs()
             }
         }
         
-        stage ("Checkout from SCM") {
+        stage("Checkoutfrom SCM") {
             steps {
                 git branch: 'main', credentialsId: 'github', url: 'https://github.com/shubhamk-tech/register-app.git'
             }
@@ -39,25 +42,25 @@ pipeline {
             }    
         }
         
-        stage ("Sonarqube Analysis") {
-            steps {
-                script {
-                    withSonarQubeEnv(credentialsId: 'sonar-token') {
-                    sh "mvn sonar:sonar"
-                    } 
+        stage("Sonarqube Analysis ") {
+            steps{
+                withSonarQubeEnv('sonarqube-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=register-app \
+                    -Dsonar.java.binaries=. \
+                    -Dsonar.projectKey=register-app '''
                 }
-            }    
+            }
         }
         
-        stage ("Quality Gate") {
-            steps {
+        stage("Quality Gate") {
+           steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token' 
                 }
-            }    
+            } 
         }
         
-        stage ("Build and Push Docker Image") {
+        stage("Build and Push Docker Image") {
             steps {
                 script {
                     docker.withRegistry('',DOCKER_PASS) {
@@ -74,7 +77,7 @@ pipeline {
         
         stage("Trivy Scan") {
            steps {
-               sh "trivy image shubhz1452/register-app-pipline:latest"
+               sh "trivy image shubhz1452/register-app-pipeline:latest"
             }
         }
         
@@ -90,16 +93,9 @@ pipeline {
         stage("Trigger CD Pipeline") {
             steps {
                 script {
-                    sh "curl -v -k --user admin:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'ec2-54-157-145-122.compute-1.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
+                    sh "curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'ec2-52-71-61-56.compute-1.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
                 }
             }
         }
     }
 }
-
-
-
-
-
-
-
